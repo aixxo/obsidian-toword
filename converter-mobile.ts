@@ -1705,7 +1705,19 @@ ${imageRels}</Relationships>`;
 		// Process formatting with proper nested support
 		// 1. Code first (highest priority, no further processing)
 		result = result.replace(/`([^`\n]+?)`/g, '|||CODE|||$1|||/CODE|||');
-		
+		result = result.replace(/<code>([^<]+?)<\/code>/g, '|||CODE|||$1|||/CODE|||');
+
+		// Protect code span content from the emphasis regexes below. Without this,
+		// underscores/asterisks inside inline code (e.g. `sys_id`) are treated as
+		// markdown delimiters and can even match across separate code spans,
+		// producing corrupted/invalid Word XML.
+		const codePlaceholders: string[] = [];
+		result = result.replace(/\|\|\|CODE\|\|\|([\s\S]*?)\|\|\|\/CODE\|\|\|/g, (_match: string, content: string) => {
+			const placeholder = `\u0000CODE${codePlaceholders.length}\u0000`;
+			codePlaceholders.push(content);
+			return placeholder;
+		});
+
 		// 2. Handle complex nested patterns (***text*** - bold+italic)
 		result = result.replace(/\*\*\*([^*\n]+?)\*\*\*/g, '|||BOLDITALIC|||$1|||/BOLDITALIC|||');
 		result = result.replace(/___([^_\n]+?)___/g, '|||BOLDITALIC|||$1|||/BOLDITALIC|||');
@@ -1733,7 +1745,6 @@ ${imageRels}</Relationships>`;
 		result = result.replace(/<mark>([^<]+?)<\/mark>/g, '|||HIGHLIGHT|||$1|||/HIGHLIGHT|||');
 		result = result.replace(/<sup>([^<]+?)<\/sup>/g, '|||SUPER|||$1|||/SUPER|||');
 		result = result.replace(/<sub>([^<]+?)<\/sub>/g, '|||SUB|||$1|||/SUB|||');
-		result = result.replace(/<code>([^<]+?)<\/code>/g, '|||CODE|||$1|||/CODE|||');
 		
 		// 8. Footnote references
 		result = result.replace(/\[\^([^\]]+)\]/g, (_match: string, footnoteLabel: string) => {
@@ -1754,6 +1765,10 @@ ${imageRels}</Relationships>`;
 		// 10. Links
 		result = result.replace(/\[([^\]]+)\]\(([^\s)]+)(?:\s+"[^"]*")?\)/g, '|||LINK|||$1|||DATA:$2|||/LINK|||');
 		
+		// Restore protected code span content now that emphasis parsing is done
+		result = result.replace(/\u0000CODE(\d+)\u0000/g, (_match: string, idx: string) =>
+			`|||CODE|||${codePlaceholders[Number(idx)]}|||/CODE|||`);
+
 		// Convert to Word XML
 		return this.convertMarkersToWordXml(result);
 	}
